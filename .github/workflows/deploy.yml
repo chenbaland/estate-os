@@ -1,0 +1,167 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AWS_REGION: eu-west-1
+  ECR_BACKEND_REPO: estateos/backend
+  ECR_FRONTEND_REPO: estateos/frontend
+
+jobs:
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: meta
+        run: echo "version=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:${{ steps.meta.outputs.version }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          target: production
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ steps.meta.outputs.version }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    defaults:
+      run:
+        working-directory: infrastructure/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="image_tag=${{ needs.build-and-push.outputs.image_tag }}" \
+            -var="environment=${{ github.event.inputs.environment || 'production' }}" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
+
+  deploy-ecs:
+    name: Deploy ECS Services
+    runs-on: ubuntu-latest
+    needs: [build-and-push, terraform]
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new deployment — API
+        run: |
+          aws ecs update-service \
+            --cluster estateos-${{ github.event.inputs.environment || 'production' }}-cluster \
+            --service estateos-${{ github.event.inputs.environment || 'production' }}-api \
+            --force-new-deployment
+
+      - name: Force new deployment — Worker
+        run: |
+          aws ecs update-service \
+            --cluster estateos-${{ github.event.inputs.environment || 'production' }}-cluster \
+            --service estateos-${{ github.event.inputs.environment || 'production' }}-worker \
+            --force-new-deployment
+
+      - name: Force new deployment — Beat
+        run: |
+          aws ecs update-service \
+            --cluster estateos-${{ github.event.inputs.environment || 'production' }}-cluster \
+            --service estateos-${{ github.event.inputs.environment || 'production' }}-beat \
+            --force-new-deployment
+
+      - name: Force new deployment — Nginx
+        run: |
+          aws ecs update-service \
+            --cluster estateos-${{ github.event.inputs.environment || 'production' }}-cluster \
+            --service estateos-${{ github.event.inputs.environment || 'production' }}-nginx \
+            --force-new-deployment
+
+      - name: Wait for API service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster estateos-${{ github.event.inputs.environment || 'production' }}-cluster \
+            --services estateos-${{ github.event.inputs.environment || 'production' }}-api
+
+      - name: Invalidate CloudFront cache
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Comment=='EstateOS CDN'].Id" \
+            --output text)
+          if [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id "$DIST_ID" \
+              --paths "/*"
+          fi

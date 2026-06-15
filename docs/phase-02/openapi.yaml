@@ -1,0 +1,497 @@
+openapi: 3.1.0
+info:
+  title: EstateOS API
+  version: 1.0.0
+  description: Enterprise Estate Management Platform API
+  contact:
+    name: EstateOS Engineering
+    email: api@estateos.app
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.estateos.app/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Development
+
+tags:
+  - name: Auth
+  - name: Accounts
+  - name: Estates
+  - name: Residents
+  - name: Visitors
+  - name: Security
+  - name: Billing
+  - name: Utilities
+  - name: Marketplace
+  - name: Pharmacy
+  - name: Healthcare
+  - name: Facilities
+  - name: Maintenance
+  - name: Packages
+  - name: Parking
+  - name: Community
+  - name: Transportation
+  - name: Analytics
+  - name: AI
+  - name: Notifications
+  - name: Payments
+  - name: Compliance
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    EstateHeader:
+      type: apiKey
+      in: header
+      name: X-Estate-Id
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        mfa_enabled:
+          type: boolean
+
+    Estate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        country:
+          type: string
+        settings:
+          type: object
+
+    Unit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        unit_number:
+          type: string
+        unit_type:
+          type: string
+        status:
+          type: string
+          enum: [vacant, occupied, maintenance]
+
+    ResidentProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        resident_type:
+          type: string
+          enum: [owner, tenant]
+        status:
+          type: string
+          enum: [invited, pending_verification, active, moved_out]
+
+    VisitorPass:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pass_type:
+          type: string
+          enum: [qr, otp, delivery, recurring]
+        visitor_name:
+          type: string
+        qr_code:
+          type: string
+        valid_from:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, used, expired, revoked]
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+        total_amount:
+          type: string
+        status:
+          type: string
+        due_date:
+          type: string
+          format: date
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        pagination:
+          type: object
+          properties:
+            cursor:
+              type: string
+            has_more:
+              type: boolean
+            count:
+              type: integer
+
+paths:
+  /auth/login/:
+    post:
+      tags: [Auth]
+      summary: Email/password login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TokenPair'
+                  - type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+
+  /auth/token/refresh/:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+
+  /auth/otp/request/:
+    post:
+      tags: [Auth]
+      summary: Request phone OTP
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+      responses:
+        '200':
+          description: OTP sent
+
+  /accounts/me/:
+    get:
+      tags: [Accounts]
+      security: [{BearerAuth: []}]
+      summary: Current user profile
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /estates/:
+    get:
+      tags: [Estates]
+      security: [{BearerAuth: []}]
+      summary: List accessible estates
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Estate'
+    post:
+      tags: [Estates]
+      security: [{BearerAuth: []}]
+      summary: Create estate (super admin)
+      responses:
+        '201':
+          description: Created
+
+  /estates/{id}/units/:
+    get:
+      tags: [Estates]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Unit'
+
+  /residents/:
+    get:
+      tags: [Residents]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: List residents
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+    post:
+      tags: [Residents]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Create/invite resident
+      responses:
+        '201':
+          description: Created
+
+  /visitors/passes/:
+    get:
+      tags: [Visitors]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: List visitor passes
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Visitors]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Create visitor pass
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visitor_name, valid_until]
+              properties:
+                pass_type:
+                  type: string
+                  default: qr
+                visitor_name:
+                  type: string
+                visitor_phone:
+                  type: string
+                valid_from:
+                  type: string
+                  format: date-time
+                valid_until:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitorPass'
+
+  /visitors/scan/:
+    post:
+      tags: [Visitors]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Gate scan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qr_code:
+                  type: string
+                gate_id:
+                  type: string
+      responses:
+        '200':
+          description: Access granted
+        '422':
+          description: Access denied
+
+  /security/sos/:
+    post:
+      tags: [Security]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Trigger SOS alert
+      responses:
+        '201':
+          description: SOS triggered
+
+  /billing/invoices/:
+    get:
+      tags: [Billing]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: List invoices
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+
+  /billing/invoices/{id}/pay/:
+    post:
+      tags: [Billing]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Initiate invoice payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment initialized
+
+  /marketplace/products/:
+    get:
+      tags: [Marketplace]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: Search products
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product list
+
+  /ai/chat/:
+    post:
+      tags: [AI]
+      security: [{BearerAuth: []}, {EstateHeader: []}]
+      summary: AI concierge chat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                conversation_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: AI response with citations
+
+  /payments/webhooks/paystack/:
+    post:
+      tags: [Payments]
+      summary: Paystack webhook
+      responses:
+        '200':
+          description: Processed
+
+  /health/:
+    get:
+      tags: [Compliance]
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy

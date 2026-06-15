@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-brand {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--brand-gradient-from)),
+      hsl(var(--brand-gradient-to))
+    );
+  }
+
+  .glass {
+    @apply bg-background/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .container-app {
+    @apply mx-auto w-full max-w-[var(--content-max-width)] px-4 sm:px-6 lg:px-8;
+  }
+}
