@@ -1,0 +1,28 @@
+# Virtual environments
+**/.venv/
+backend/.venv/
+venv/
+env/
+
+# Dependencies & build output
+**/node_modules/
+frontend/.next/
+mobile/.expo/
+
+# Python caches
+**/__pycache__/
+**/.pytest_cache/
+
+# Environment files
+.env
+.env.*
+!**/.env.example
+
+# Django runtime
+backend/media/
+backend/staticfiles/
+
+# Coverage
+**/.coverage
+**/coverage.json
+**/htmlcov/

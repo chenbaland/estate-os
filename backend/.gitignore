@@ -1,0 +1,22 @@
+# Python virtual environment
+.venv/
+**/.venv/
+backend/.venv/
+venv/
+
+# Bytecode & caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Test coverage
+.coverage
+coverage.json
+htmlcov/
+
+# Django uploads & collected static files
+media/
+staticfiles/
+*.sqlite3
