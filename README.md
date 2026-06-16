@@ -41,6 +41,7 @@ cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 python manage.py migrate
+python manage.py seed_demo   # optional — creates demo users (see below)
 python manage.py runserver
 
 # 4. Frontend
@@ -53,6 +54,34 @@ cd mobile && npm install && npx expo start
 docker compose up -d
 curl http://localhost/health/
 ```
+
+## Demo Accounts
+
+Seed demo data first (idempotent — safe to re-run):
+
+```bash
+cd backend && source .venv/bin/activate
+python manage.py seed_demo
+```
+
+**Default password for all demo accounts:** `DemoPass12345`
+
+Login at **http://localhost:3000/login**
+
+| Role | Email |
+|------|-------|
+| Platform super admin | `superadmin@demo.estateos` |
+| Estate admin (Palm Grove) | `admin@palmgrovedemo.estateos` |
+| Finance admin | `finance@palmgrovedemo.estateos` |
+| Security admin | `security-admin@palmgrovedemo.estateos` |
+| Facility admin | `facility@palmgrovedemo.estateos` |
+| Resident | `resident1@palmgrovedemo.estateos` |
+| Tenant | `tenant@palmgrovedemo.estateos` |
+| Vendor | `vendor@palmgrovedemo.estateos` |
+| Technician | `technician@palmgrovedemo.estateos` |
+| Estate admin (Oak Heights) | `admin@oakheightsdemo.estateos` |
+
+Full credential list and seeded module data: [docs/QA_DEMO_DATA.md](docs/QA_DEMO_DATA.md)
 
 ## Verification (Latest)
 
